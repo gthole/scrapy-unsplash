@@ -2,4 +2,5 @@
 venv
 virtualenv
 *.swp
+settings.py
 images/
