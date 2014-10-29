@@ -10,8 +10,6 @@ try:
 except ImportError:
     from io import BytesIO
 
-BASE_WIDTH = 1280
-
 
 class UnsplashItem(Item):
     images = Field()
@@ -44,14 +42,15 @@ class UnsplashSpider(Spider):
 class UnsplashPipeline(ImagesPipeline):
     def get_images(self, response, request, info):
         path = self.file_path(request)
+        base_width = self.crawler.settings.get("BASE_WIDTH")
 
         # Resize the image to the desired width
         orig_image = Image.open(BytesIO(response.body))
         w, h = orig_image.size
-        ratio = BASE_WIDTH / float(w)
+        ratio = base_width / float(w)
         image, buf = self.convert_image(
             orig_image,
-            (BASE_WIDTH, int(h * ratio))
+            (base_width, int(h * ratio))
         )
 
         # Return just this image
@@ -61,23 +60,29 @@ class UnsplashPipeline(ImagesPipeline):
         # Store by the unsplash image PID from the download URL
         return "%s.jpg" % request.url.split("/")[4]
 
+
+# //doc.scrapy.org/en/latest/topics/practices.html#run-scrapy-from-a-script
 if __name__ == "__main__":
-    # http://doc.scrapy.org/en/latest/topics/
-    #   practices.html#run-scrapy-from-a-script
     spider = UnsplashSpider()
+
+    # Get settings from project
+    # This pulls in the module set in SCRAPY_SETTINGS_MODULE env var.
     settings = get_project_settings()
-    # TODO: Better overrideable settings
-    settings.setdict({
-        "DOWNLOADER_DELAY": 1,
-        "ITEM_PIPELINES": {"unsplash.UnsplashPipeline": 1},
-        "AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID"),
-        "AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY"),
-        "IMAGES_STORE": os.environ.get("IMAGES_STORE", "images"),
-    })
+    settings.setdict(
+        {
+            "DOWNLOADER_DELAY": 1,
+            "ITEM_PIPELINES": {"unsplash.UnsplashPipeline": 1},
+            "IMAGES_STORE": "images",
+            "BASE_WIDTH": 1280
+        },
+        priority="default"
+    )
+
+    # Create and run crawl
     crawler = Crawler(settings)
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
     crawler.configure()
     crawler.crawl(spider)
     crawler.start()
-    log.start(loglevel=os.environ.get("LOGLEVEL", "INFO"))
+    log.start()
     reactor.run()
